@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api from "../api"; // 🔥 IMPORTANT (remplace axios direct)
+
 import {
   Box, TextField, Button, Typography, Paper,
   Stack, Alert, Snackbar, InputAdornment,
@@ -46,25 +47,32 @@ const Login = () => {
   // =========================
   const handleLogin = async () => {
 
-    if (loading) return; // 🔥 anti double click
+    if (loading) return;
+
+    // 🔥 Validation simple
+    if (!credentials.username || !credentials.password) {
+      setNotification({
+        open: true,
+        message: "Identifiant et mot de passe requis",
+        severity: "warning"
+      });
+      return;
+    }
 
     setLoading(true);
 
     try {
-      const res = await axios.post(
-        "http://127.0.0.1:8000/api/users/login/",
-        credentials
-      );
+      const res = await api.post("users/login/", credentials);
 
       // =========================
-      // STEP 2FA REQUIRED
+      // STEP 2FA
       // =========================
       if (res.data.step === "2FA_REQUIRED") {
         setStep(2);
 
         setNotification({
           open: true,
-          message: "Authentification 2FA requise",
+          message: "Code OTP requis",
           severity: "info"
         });
 
@@ -73,7 +81,7 @@ const Login = () => {
       }
 
       // =========================
-      // LOGIN SUCCESS
+      // SUCCESS
       // =========================
       if (res.data.access) {
 
@@ -83,35 +91,42 @@ const Login = () => {
 
         setNotification({
           open: true,
-          message: "Accès autorisé",
+          message: "Connexion réussie",
           severity: "success"
         });
 
         setTimeout(() => {
           window.location.href = "/";
-        }, 1200);
+        }, 1000);
       }
 
     } catch (err) {
       setNotification({
         open: true,
-        message: err.response?.data?.error || "Erreur serveur",
+        message:
+          err.response?.data?.error ||
+          err.response?.data?.detail ||
+          "Erreur serveur",
         severity: "error"
       });
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   // =========================
-  // RESET OTP STEP
+  // RESET OTP
   // =========================
   const resetStep = () => {
     setStep(1);
-    setCredentials({
-      ...credentials,
-      otp: ""
-    });
+    setCredentials({ ...credentials, otp: "" });
+  };
+
+  // 🔥 ENTER KEY SUPPORT
+  const handleKeyPress = (e) => {
+    if (e.key === "Enter") {
+      handleLogin();
+    }
   };
 
   return (
@@ -134,7 +149,6 @@ const Login = () => {
 
         {/* HEADER */}
         <Stack direction="row" justifyContent="space-between" mb={2}>
-
           <Box component="img"
             src={sceauRdc}
             sx={{
@@ -149,7 +163,6 @@ const Login = () => {
             src={drapeauRdc}
             sx={{ width: 55, borderRadius: 1 }}
           />
-
         </Stack>
 
         <Typography fontWeight={900} color="white">
@@ -160,7 +173,7 @@ const Login = () => {
           SYSTÈME SÉCURISÉ NATIONAL
         </Typography>
 
-        {/* ================= STEP 1 ================= */}
+        {/* STEP 1 */}
         {step === 1 && (
           <Fade in>
             <Stack spacing={2} mt={3}>
@@ -170,6 +183,8 @@ const Login = () => {
                 label="Identifiant"
                 value={credentials.username}
                 onChange={handleChange}
+                onKeyDown={handleKeyPress}
+                fullWidth
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -185,6 +200,8 @@ const Login = () => {
                 label="Mot de passe"
                 value={credentials.password}
                 onChange={handleChange}
+                onKeyDown={handleKeyPress}
+                fullWidth
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -198,10 +215,9 @@ const Login = () => {
           </Fade>
         )}
 
-        {/* ================= STEP 2 ================= */}
+        {/* STEP 2 */}
         {step === 2 && (
           <Slide direction="left" in>
-
             <Stack spacing={2} mt={3}>
 
               <Typography sx={{
@@ -218,6 +234,8 @@ const Login = () => {
                 label="Code OTP"
                 value={credentials.otp}
                 onChange={handleChange}
+                onKeyDown={handleKeyPress}
+                fullWidth
                 inputProps={{
                   maxLength: 6,
                   style: {
@@ -291,7 +309,7 @@ const Login = () => {
         autoHideDuration={4000}
         onClose={() => setNotification({ ...notification, open: false })}
       >
-        <Alert severity={notification.severity}>
+        <Alert severity={notification.severity} variant="filled">
           {notification.message}
         </Alert>
       </Snackbar>

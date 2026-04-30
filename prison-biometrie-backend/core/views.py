@@ -45,7 +45,7 @@ from users.permissions import HasDynamicPermission
 # ==========================================
 # 7. FACE RECOGNITION (SI UTILISÉ)
 # ==========================================
-import face_recognition
+
 import numpy as np
 from io import BytesIO
 from django.core.files.uploadedfile import InMemoryUploadedFile
@@ -2250,7 +2250,15 @@ class AgentViewSet(viewsets.ModelViewSet):
             'photo_url': agent.photo.url if agent.photo else None,
             'is_officier': agent.est_officier_judiciaire
         })
-    
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from datetime import datetime, time
+
+from .models import Pointage, Agent
+from .serializers import PointageSerializer
+
+
 class PointageViewSet(viewsets.ModelViewSet):
     queryset = Pointage.objects.all().order_by('-date_jour', '-heure_arrivee')
     serializer_class = PointageSerializer
@@ -2258,97 +2266,62 @@ class PointageViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def scanner(self, request):
         """
-        Scan combiné : Matricule + Reconnaissance Faciale
-        Attends : { 'matricule': 'AP-2026', 'image': [Fichier Image] }
+        Scan SIMPLE : Matricule uniquement
+        Attends : { 'matricule': 'AP-2026' }
         """
-        matricule = request.data.get('matricule')
-        image_file = request.FILES.get('image')
 
-        if not matricule or not image_file:
-            return Response({"error": "Matricule et image requis"}, status=status.HTTP_400_BAD_REQUEST)
+        matricule = request.data.get('matricule')
+
+        if not matricule:
+            return Response(
+                {"error": "Matricule requis"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         try:
-            # 1. Trouver l'agent
+            # 🔍 1. Trouver l'agent
             agent = Agent.objects.get(matricule=matricule, est_actif=True)
-            
-            if not agent.photo:
-                return Response({"error": "Aucune photo de référence pour cet agent. Enrôlement requis."}, status=status.HTTP_400_BAD_REQUEST)
 
-            # 2. Charger l'image de référence (stockée en base)
-            reference_image = face_recognition.load_image_file(agent.photo.path)
-            ref_encodings = face_recognition.face_encodings(reference_image)
+            now = datetime.now()
+            date_du_jour = now.date()
 
-            if not ref_encodings:
-                return Response({"error": "Impossible de lire le visage de référence."}, status=status.HTTP_400_BAD_REQUEST)
-            
-            ref_encoding = ref_encodings[0]
-
-            # 3. Charger l'image reçue (caméra)
-            camera_image = face_recognition.load_image_file(image_file)
-            camera_encodings = face_recognition.face_encodings(camera_image)
-
-            if not camera_encodings:
-                return Response({"error": "Aucun visage détecté sur la photo."}, status=status.HTTP_400_BAD_REQUEST)
-            
-            camera_encoding = camera_encodings[0]
-
-            # 4. Comparaison (Tolérance 0.6 par défaut, plus bas c'est plus strict)
-            results = face_recognition.compare_faces([ref_encoding], camera_encoding, tolerance=0.5)
-
-            if results[0]:
-                # --- LOGIQUE DE POINTAGE SI MATCH ---
-                now = datetime.now()
-                date_du_jour = now.date()
-
-                # Vérifier doublon
-                if Pointage.objects.filter(agent=agent, date_jour=date_du_jour).exists():
-                    return Response({"message": f"Bonjour {agent.nom}, vous avez déjà pointé."}, status=status.HTTP_200_OK)
-
-                # Calcul retard
-                HEURE_LIMITE = time(7, 30)
-                statut_p = "PRÉSENT" if now.time() <= HEURE_LIMITE else "RETARD"
-
-                nouveau_pointage = Pointage.objects.create(
-                    agent=agent,
-                    heure_arrivee=now.time(),
-                    statut=statut_p,
-                    methode="FACIALE"
+            # 🚫 2. Vérifier doublon
+            if Pointage.objects.filter(agent=agent, date_jour=date_du_jour).exists():
+                return Response(
+                    {"message": f"Bonjour {agent.nom}, vous avez déjà pointé."},
+                    status=status.HTTP_200_OK
                 )
 
-                return Response({
-                    "status": "success",
-                    "agent": f"{agent.nom} {agent.postnom}",
-                    "heure": now.time().strftime("%H:%M"),
-                    "statut": statut_p
-                }, status=status.HTTP_201_CREATED)
+            # ⏱️ 3. Calcul du statut (présent / retard)
+            HEURE_LIMITE = time(7, 30)
+            statut_p = "PRÉSENT" if now.time() <= HEURE_LIMITE else "RETARD"
 
-            else:
-                return Response({"error": "Échec de reconnaissance : le visage ne correspond pas au matricule."}, status=status.HTTP_401_UNAUTHORIZED)
+            # 📝 4. Enregistrement du pointage
+            nouveau_pointage = Pointage.objects.create(
+                agent=agent,
+                heure_arrivee=now.time(),
+                statut=statut_p,
+                methode="MANUEL"  # ou "MATRICULE"
+            )
+
+            return Response({
+                "status": "success",
+                "agent": f"{agent.nom} {agent.postnom}",
+                "heure": now.time().strftime("%H:%M"),
+                "statut": statut_p
+            }, status=status.HTTP_201_CREATED)
 
         except Agent.DoesNotExist:
-            return Response({"error": "Agent non reconnu ou inactif"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Agent non reconnu ou inactif"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
         except Exception as e:
-            return Response({"error": f"Erreur technique: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            return Response(
+                {"error": f"Erreur technique: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 

@@ -1,10 +1,13 @@
 import axios from "axios";
 
+// 🔥 URL dynamique (dev / prod)
 const api = axios.create({
-    baseURL: "http://127.0.0.1:8000/api/",
+    baseURL: import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/",
 });
 
-// 👉 Ajout automatique du token
+// ================================
+// 🔐 INTERCEPTOR REQUEST
+// ================================
 api.interceptors.request.use(
     (config) => {
         const token = localStorage.getItem("access");
@@ -18,16 +21,73 @@ api.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
-// 👉 Gestion erreur 401 (token expiré)
+// ================================
+// 🔄 REFRESH TOKEN AUTOMATIQUE
+// ================================
+let isRefreshing = false;
+let refreshSubscribers = [];
+
+const subscribeTokenRefresh = (callback) => {
+    refreshSubscribers.push(callback);
+};
+
+const onRefreshed = (newToken) => {
+    refreshSubscribers.forEach((callback) => callback(newToken));
+    refreshSubscribers = [];
+};
+
+// ================================
+// ⚠️ INTERCEPTOR RESPONSE
+// ================================
 api.interceptors.response.use(
     (response) => response,
-    (error) => {
-        if (error.response?.status === 401) {
-            localStorage.removeItem("access");
-            localStorage.removeItem("refresh");
+    async (error) => {
+        const originalRequest = error.config;
 
-            window.location.href = "/login";
+        // 🔴 Token expiré
+        if (error.response?.status === 401 && !originalRequest._retry) {
+            originalRequest._retry = true;
+
+            if (isRefreshing) {
+                return new Promise((resolve) => {
+                    subscribeTokenRefresh((token) => {
+                        originalRequest.headers.Authorization = `Bearer ${token}`;
+                        resolve(api(originalRequest));
+                    });
+                });
+            }
+
+            isRefreshing = true;
+
+            try {
+                const refresh = localStorage.getItem("refresh");
+
+                const response = await axios.post(
+                    `${import.meta.env.VITE_API_URL}/users/token/refresh/`,
+                    { refresh }
+                );
+
+                const newAccess = response.data.access;
+
+                localStorage.setItem("access", newAccess);
+
+                api.defaults.headers.Authorization = `Bearer ${newAccess}`;
+
+                onRefreshed(newAccess);
+
+                return api(originalRequest);
+
+            } catch (err) {
+                // ❌ refresh expiré → logout
+                localStorage.removeItem("access");
+                localStorage.removeItem("refresh");
+
+                window.location.href = "/login";
+            } finally {
+                isRefreshing = false;
+            }
         }
+
         return Promise.reject(error);
     }
 );
