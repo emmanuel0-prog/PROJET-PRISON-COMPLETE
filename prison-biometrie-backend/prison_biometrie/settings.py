@@ -26,6 +26,9 @@ AUTH_USER_MODEL = 'users.User'
 # APPS
 # ========================
 INSTALLED_APPS = [
+    # ADMIN MODERNE
+    'jazzmin',
+
     # ASGI / WEBSOCKET
     'daphne',
     'channels',
@@ -54,6 +57,35 @@ INSTALLED_APPS = [
 ]
 
 # ========================
+# JAZZMIN CONFIG
+# ========================
+JAZZMIN_SETTINGS = {
+    "site_title": "Prison Biometrie",
+    "site_header": "PRISON BIOMETRIE",
+    "site_brand": "Administration",
+    "welcome_sign": "Bienvenue dans le système pénitentiaire biométrique",
+    "copyright": "Ministère de la Justice RDC",
+    "search_model": ["users.User"],
+
+    "topmenu_links": [
+        {"name": "Accueil", "url": "admin:index", "permissions": ["auth.view_user"]},
+    ],
+
+    "icons": {
+        "auth": "fas fa-users-cog",
+        "users.User": "fas fa-user-shield",
+        "biometrie": "fas fa-fingerprint",
+        "dashboard": "fas fa-chart-line",
+    },
+
+    "show_sidebar": True,
+    "navigation_expanded": True,
+
+    "custom_css": None,
+    "custom_js": None,
+}
+
+# ========================
 # CORS
 # ========================
 CORS_ALLOW_ALL_ORIGINS = True
@@ -67,16 +99,20 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
 
     'django.contrib.sessions.middleware.SessionMiddleware',
+
     'django.middleware.common.CommonMiddleware',
 
     # Active si nécessaire
     # 'django.middleware.csrf.CsrfViewMiddleware',
 
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+
     'django.contrib.messages.middleware.MessageMiddleware',
+
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 
     'core.middleware.AuditMiddleware',
+
     'simple_history.middleware.HistoryRequestMiddleware',
 ]
 
@@ -99,6 +135,7 @@ TEMPLATES = [
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.debug',
+
                 'django.template.context_processors.request',
 
                 'django.contrib.auth.context_processors.auth',
@@ -113,6 +150,7 @@ TEMPLATES = [
 # WSGI / ASGI
 # ========================
 WSGI_APPLICATION = 'prison_biometrie.wsgi.application'
+
 ASGI_APPLICATION = 'prison_biometrie.asgi.application'
 
 # ========================
@@ -121,6 +159,7 @@ ASGI_APPLICATION = 'prison_biometrie.asgi.application'
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
+
         "CONFIG": {
             "hosts": [("127.0.0.1", 6379)],
         },
@@ -133,6 +172,7 @@ CHANNEL_LAYERS = {
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
+
         "LOCATION": "redis://127.0.0.1:6379/1",
     }
 }
