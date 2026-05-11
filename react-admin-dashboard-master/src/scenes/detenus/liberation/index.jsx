@@ -73,8 +73,8 @@ const LiberationDetenu = () => {
       try {
         setLoading(true);
         const [resDetenus, resParquets] = await Promise.all([
-          api.get("http://127.0.0.1:8000/api/detenus/"),
-          api.get("http://127.0.0.1:8000/api/parquets/")
+          api.get("detenus/"),
+          api.get("parquets/")
         ]);
         const actifs = resDetenus.data.filter(d => d.statut_juridique !== 'LIBERE' && !d.est_supprime);
         setListeDetenus(actifs);
@@ -96,7 +96,7 @@ const LiberationDetenu = () => {
   // --- CHARGEMENT DU DÉTENU SÉLECTIONNÉ ---
   useEffect(() => {
     if (detenuId && detenuId !== "undefined") {
-      api.get(`http://127.0.0.1:8000/api/detenus/${detenuId}/`)
+      api.get(`detenus/${detenuId}/`)
         .then(res => setDetenuData(res.data))
         .catch(() => {
           // Fallback si API échoue : on cherche dans la liste déjà chargée
@@ -144,7 +144,7 @@ const LiberationDetenu = () => {
       formData.append("oml", files.oml);
 
       // 🔥 UTILISATION DU BON ID POUR L'API
-      await api.post(`http://127.0.0.1:8000/api/detenus/${currentDetenuId}/liberer/`, formData, {
+      await api.post(`detenus/${currentDetenuId}/liberer/`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
