@@ -142,7 +142,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.getenv('DB_NAME', 'database_prison_biometrie'),
         'USER': os.getenv('DB_USER', 'postgres'),
-        'PASSWORD': os.getenv('DB_PASSWORD', 'password'),
+        'PASSWORD': os.getenv('DB_PASSWORD', 'emmanuel---@@@##123'),
         'HOST': '127.0.0.1',
         'PORT': '5432',
     }
