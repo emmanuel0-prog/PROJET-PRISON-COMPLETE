@@ -9,17 +9,28 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ========================
 SECRET_KEY = 'django-insecure--1z^_d9g@u%k94o^=p8sm^74hhtw^4vwt*$95)nburhmhuvk+('
 
-DEBUG = False  # 🚨 IMPORTANT
+DEBUG = False
 
-ALLOWED_HOSTS = ["167.71.2.177", "localhost", "127.0.0.1"]
+ALLOWED_HOSTS = [
+    "167.71.2.177",
+    "localhost",
+    "127.0.0.1",
+]
+
+# ========================
+# 🔥 CUSTOM USER MODEL
+# ========================
+AUTH_USER_MODEL = 'users.User'
 
 # ========================
 # APPS
 # ========================
 INSTALLED_APPS = [
+    # ASGI / WEBSOCKET
     'daphne',
     'channels',
 
+    # DJANGO
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -27,12 +38,14 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+    # THIRD PARTY
     'django_filters',
     'simple_history',
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
 
+    # LOCAL APPS
     'users',
     'core',
     'biometrie',
@@ -41,10 +54,9 @@ INSTALLED_APPS = [
 ]
 
 # ========================
-# CORS (FRONT REACT)
+# CORS
 # ========================
-CORS_ALLOW_ALL_ORIGINS = True  
-# 👉 Plus tard remplace par ton domaine
+CORS_ALLOW_ALL_ORIGINS = True
 
 # ========================
 # MIDDLEWARE
@@ -57,7 +69,7 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
 
-    # ⚠️ désactivé si problème avec React
+    # Active si nécessaire
     # 'django.middleware.csrf.CsrfViewMiddleware',
 
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -67,27 +79,6 @@ MIDDLEWARE = [
     'core.middleware.AuditMiddleware',
     'simple_history.middleware.HistoryRequestMiddleware',
 ]
-
-# ========================
-# REST FRAMEWORK
-# ========================
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
-    ],
-    'DEFAULT_FILTER_BACKENDS': [
-        'django_filters.rest_framework.DjangoFilterBackend',
-    ]
-}
-
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
-    'AUTH_HEADER_TYPES': ('Bearer',),
-}
 
 # ========================
 # URLS
@@ -100,21 +91,33 @@ ROOT_URLCONF = 'prison_biometrie.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
+
+        'DIRS': [],
+
         'APP_DIRS': True,
+
         'OPTIONS': {
             'context_processors': [
+                'django.template.context_processors.debug',
                 'django.template.context_processors.request',
+
                 'django.contrib.auth.context_processors.auth',
+
+                'django.contrib.messages.context_processors.messages',
             ],
         },
     },
 ]
 
 # ========================
-# ASGI / WEBSOCKET
+# WSGI / ASGI
 # ========================
+WSGI_APPLICATION = 'prison_biometrie.wsgi.application'
 ASGI_APPLICATION = 'prison_biometrie.asgi.application'
 
+# ========================
+# CHANNELS / REDIS
+# ========================
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
@@ -125,7 +128,7 @@ CHANNEL_LAYERS = {
 }
 
 # ========================
-# CACHE (REDIS)
+# CACHE REDIS
 # ========================
 CACHES = {
     "default": {
@@ -140,36 +143,76 @@ CACHES = {
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
+
         'NAME': os.getenv('DB_NAME', 'database_prison_biometrie'),
-        'USER': os.getenv('DB_USER', 'postgres'),
+
+        'USER': os.getenv('DB_USER', 'prison_user'),
+
         'PASSWORD': os.getenv('DB_PASSWORD', 'emmanuel---@@@##123'),
-        'HOST': '127.0.0.1',
-        'PORT': '5432',
+
+        'HOST': os.getenv('DB_HOST', '127.0.0.1'),
+
+        'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
 
 # ========================
-# PASSWORD VALIDATION
+# REST FRAMEWORK
+# ========================
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+    ],
+}
+
+# ========================
+# JWT
+# ========================
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
+
+# ========================
+# PASSWORD VALIDATORS
 # ========================
 AUTH_PASSWORD_VALIDATORS = [
-    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+    },
 ]
 
 # ========================
 # LOCALISATION
 # ========================
 LANGUAGE_CODE = 'fr-fr'
+
 TIME_ZONE = 'Africa/Kinshasa'
+
 USE_I18N = True
+
 USE_TZ = True
 
 # ========================
 # STATIC FILES
 # ========================
 STATIC_URL = '/static/'
+
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
+
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # ========================
