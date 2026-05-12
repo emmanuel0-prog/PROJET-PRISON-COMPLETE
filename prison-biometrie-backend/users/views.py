@@ -100,12 +100,15 @@ def login_view(request):
     ip = request.META.get("REMOTE_ADDR", "0.0.0.0")
     user_agent = request.META.get("HTTP_USER_AGENT", "unknown")
 
-    geo = get_ip_info(ip) or {
-        "country": "Unknown",
-        "city": "Unknown"
-    }
+    # 🔥 SAFE GEO (IMPORTANT - évite 500)
+    try:
+        geo = get_ip_info(ip)
+        if not isinstance(geo, dict):
+            geo = {"country": "Unknown", "city": "Unknown"}
+    except Exception:
+        geo = {"country": "Unknown", "city": "Unknown"}
 
-    # 🚫 Vérifie si IP bloquée
+    # 🚫 IP bloquée
     if is_ip_blocked(ip):
 
         AuthAuditLog.objects.create(
@@ -123,13 +126,9 @@ def login_view(request):
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # 🔐 Authentification
-    user = authenticate(
-        username=username,
-        password=password
-    )
+    # 🔐 Auth
+    user = authenticate(username=username, password=password)
 
-    # ❌ Mauvais identifiants
     if not user:
 
         register_failed_attempt(ip)
@@ -149,18 +148,16 @@ def login_view(request):
             status=status.HTTP_401_UNAUTHORIZED
         )
 
-    # ✅ Reset tentatives
+    # reset attempts
     reset_attempts(ip)
 
-    # 🚫 Compte désactivé
     if not user.is_active:
-
         return Response(
             {"error": "Compte désactivé"},
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # 🌍 Connexion suspecte
+    # 🌍 Login suspect
     if user.last_login_ip and user.last_login_ip != ip:
 
         AuthAuditLog.objects.create(
@@ -176,16 +173,11 @@ def login_view(request):
     # 🎫 JWT
     refresh = RefreshToken.for_user(user)
 
-    # 🕒 Mise à jour login
     user.last_login_ip = ip
     user.last_login = now()
+    user.save(update_fields=["last_login_ip", "last_login"])
 
-    user.save(update_fields=[
-        "last_login_ip",
-        "last_login"
-    ])
-
-    # ✅ Audit succès
+    # log success
     AuthAuditLog.objects.create(
         user=user,
         event_type="LOGIN_SUCCESS",
@@ -196,21 +188,15 @@ def login_view(request):
         success=True
     )
 
-    # 🔑 Permissions
+    # permissions
     permissions = list(
-        RolePermission.objects.filter(
-            role=user.role
-        ).values_list(
-            'permission__code',
-            flat=True
-        )
+        RolePermission.objects.filter(role=user.role)
+        .values_list('permission__code', flat=True)
     )
 
-    # ✅ Réponse finale
     return Response({
         "refresh": str(refresh),
         "access": str(refresh.access_token),
-
         "user": {
             "id": str(user.id),
             "username": user.username,
@@ -220,6 +206,11 @@ def login_view(request):
         }
     })
 
+
+# =========================================================
+# 🔐 VERIFY 2FA
+# (tu peux garder ou supprimer si inutile)
+# =========================================================
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def verify_2fa(request):
@@ -240,15 +231,20 @@ def verify_2fa(request):
         return Response({"message": "2FA activé avec succès"})
 
     return Response({"error": "Code invalide"}, status=400)
-# =========================================================
-from rest_framework.decorators import api_view
-from rest_framework.permissions import IsAuthenticated
 
+
+# =========================================================
+# 📍 LOGIN MAP
+# =========================================================
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def login_map(request):
+
     logs = AuthAuditLog.objects.filter(success=True).values(
-        "ip_address", "country", "city", "created_at"
+        "ip_address",
+        "country",
+        "city",
+        "created_at"
     )
 
     return Response(list(logs))
