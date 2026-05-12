@@ -1,26 +1,26 @@
-import pyotp
-from django.contrib.auth import authenticate
+import logging
+
+from django.contrib.auth import authenticate, get_user_model
 from django.utils.timezone import now
 
+from rest_framework import status, viewsets
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework import status
+
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
-from .models import Permission, RolePermission
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
-from .models import Permission, RolePermission
+
 from authentication_audit.models import AuthAuditLog
 
-
+from .models import (
+    User,
+    Permission,
+    RolePermission
+)
+# =========================================================
+# 🔐 LOGIN VIEW (PRODUCTION SECURE)
+# =========================================================
 import pyotp
 import logging
 
@@ -28,86 +28,27 @@ from django.conf import settings
 from django.utils.timezone import now
 from django.contrib.auth import authenticate
 
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from rest_framework import status
 
-from rest_framework_simplejwt.tokens import RefreshToken
+from .serializers import (
+    UserSerializer,
+    PermissionSerializer,
+    RolePermissionSerializer
+)
 
-
-
-import pyotp
-import logging
-
-from django.conf import settings
-from django.utils.timezone import now
-from django.contrib.auth import authenticate
-
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from rest_framework import status
-
-from rest_framework_simplejwt.tokens import RefreshToken
-
-from .models import  RolePermission
-
-
-from django.conf import settings
-from django.contrib.auth import authenticate
-from django.utils.timezone import now
-
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from rest_framework import status
-
-from rest_framework_simplejwt.tokens import RefreshToken
-
+from .permissions import HasDynamicPermission
 
 from .security import (
     is_ip_blocked,
     register_failed_attempt,
     reset_attempts
 )
+
 from .utils import get_ip_info
-from .alerts import send_security_alert
-from .models import RolePermission
-from .models import Permission, RolePermission
-from .serializers import PermissionSerializer, RolePermissionSerializer
 
 
-from django.contrib.auth import get_user_model
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
-
-from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
-from .permissions import HasDynamicPermission
-from .models import User
-from .serializers import UserSerializer
-import pyotp
-import logging
-
-from io import BytesIO
-import base64
-import qrcode
-
-from django.conf import settings
-from django.utils.timezone import now
-from django.contrib.auth import authenticate
-
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-
-
-
-from .models import  RolePermission
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -146,17 +87,6 @@ def create_user(request):
 
 
 
-# =========================================================
-# 🔐 LOGIN VIEW (PRODUCTION SECURE)
-# =========================================================
-import pyotp
-import logging
-
-from django.conf import settings
-from django.utils.timezone import now
-from django.contrib.auth import authenticate
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -166,15 +96,18 @@ def login_view(request):
 
     username = (request.data.get("username") or "").strip()
     password = (request.data.get("password") or "").strip()
-    otp_code = request.data.get("otp")
 
     ip = request.META.get("REMOTE_ADDR", "0.0.0.0")
     user_agent = request.META.get("HTTP_USER_AGENT", "unknown")
 
-    geo = get_ip_info(ip) or {"country": "Unknown", "city": "Unknown"}
+    geo = get_ip_info(ip) or {
+        "country": "Unknown",
+        "city": "Unknown"
+    }
 
-    # 🚫 BLOCK IP
+    # 🚫 Vérifie si IP bloquée
     if is_ip_blocked(ip):
+
         AuthAuditLog.objects.create(
             username_attempt=username,
             event_type="ACCOUNT_LOCKED",
@@ -184,12 +117,21 @@ def login_view(request):
             city=geo["city"],
             success=False
         )
-        return Response({"error": "IP bloquée"}, status=403)
 
-    # 🔐 AUTH
-    user = authenticate(username=username, password=password)
+        return Response(
+            {"error": "IP bloquée"},
+            status=status.HTTP_403_FORBIDDEN
+        )
 
+    # 🔐 Authentification
+    user = authenticate(
+        username=username,
+        password=password
+    )
+
+    # ❌ Mauvais identifiants
     if not user:
+
         register_failed_attempt(ip)
 
         AuthAuditLog.objects.create(
@@ -202,15 +144,25 @@ def login_view(request):
             success=False
         )
 
-        return Response({"error": "Identifiants invalides"}, status=401)
+        return Response(
+            {"error": "Identifiants invalides"},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
 
+    # ✅ Reset tentatives
     reset_attempts(ip)
 
+    # 🚫 Compte désactivé
     if not user.is_active:
-        return Response({"error": "Compte désactivé"}, status=403)
 
-    # 🌍 ANOMALIE
+        return Response(
+            {"error": "Compte désactivé"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # 🌍 Connexion suspecte
     if user.last_login_ip and user.last_login_ip != ip:
+
         AuthAuditLog.objects.create(
             user=user,
             event_type="SUSPICIOUS_LOGIN",
@@ -221,28 +173,19 @@ def login_view(request):
             success=True
         )
 
-    # 🔐 2FA
-    if user.two_factor_enabled:
-
-        if not user.otp_secret:
-            return Response({"error": "2FA non configuré"}, status=500)
-
-        totp = pyotp.TOTP(user.otp_secret)
-
-        if not otp_code:
-            return Response({"step": "2FA_REQUIRED"})
-
-        if not totp.verify(otp_code, valid_window=1):
-            return Response({"error": "OTP invalide"}, status=403)
-
     # 🎫 JWT
     refresh = RefreshToken.for_user(user)
 
+    # 🕒 Mise à jour login
     user.last_login_ip = ip
     user.last_login = now()
-    user.save(update_fields=["last_login_ip", "last_login"])
 
-    # LOG SUCCESS
+    user.save(update_fields=[
+        "last_login_ip",
+        "last_login"
+    ])
+
+    # ✅ Audit succès
     AuthAuditLog.objects.create(
         user=user,
         event_type="LOGIN_SUCCESS",
@@ -253,58 +196,29 @@ def login_view(request):
         success=True
     )
 
+    # 🔑 Permissions
     permissions = list(
-        RolePermission.objects.filter(role=user.role)
-        .values_list('permission__code', flat=True)
+        RolePermission.objects.filter(
+            role=user.role
+        ).values_list(
+            'permission__code',
+            flat=True
+        )
     )
 
+    # ✅ Réponse finale
     return Response({
         "refresh": str(refresh),
         "access": str(refresh.access_token),
+
         "user": {
             "id": str(user.id),
             "username": user.username,
+            "email": user.email,
             "role": user.role,
-            "permissions": permissions,
-            "two_factor_enabled": user.two_factor_enabled
+            "permissions": permissions
         }
     })
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def enable_2fa(request):
-
-    user = request.user
-
-    # 🔐 générer secret
-    secret = pyotp.random_base32()
-    user.otp_secret = secret
-    user.two_factor_enabled = False  # pas encore validé
-    user.save()
-
-    # 📱 URI Google Authenticator
-    otp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
-        name=user.username,
-        issuer_name="RDC Prison System"
-    )
-
-    # 📊 QR CODE génération
-    qr = qrcode.make(otp_uri)
-    buffer = BytesIO()
-    qr.save(buffer, format="PNG")
-
-    qr_base64 = base64.b64encode(buffer.getvalue()).decode()
-
-    return Response({
-        "secret": secret,
-        "otp_uri": otp_uri,
-        "qr_code": f"data:image/png;base64,{qr_base64}"
-    })
-
-
-
-
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
