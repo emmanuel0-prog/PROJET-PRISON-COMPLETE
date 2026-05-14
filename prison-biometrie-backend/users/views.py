@@ -85,130 +85,57 @@ def create_user(request):
 
 
 
-
-
-logger = logging.getLogger(__name__)
-
-
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_view(request):
-
+    # 1. Récupération propre des données
     username = (request.data.get("username") or "").strip()
     password = (request.data.get("password") or "").strip()
 
-    ip = request.META.get("REMOTE_ADDR", "0.0.0.0")
-    user_agent = request.META.get("HTTP_USER_AGENT", "unknown")
+    if not username or not password:
+        return Response({"error": "Nom d'utilisateur et mot de passe requis"}, status=400)
 
-    # 🔥 SAFE GEO (IMPORTANT - évite 500)
-
-    
-    try:
-        geo = get_ip_info(ip)
-        if not isinstance(geo, dict):
-            geo = {"country": "Unknown", "city": "Unknown"}
-    except Exception:
-        geo = {"country": "Unknown", "city": "Unknown"}
-
-    # 🚫 IP bloquée
-    if is_ip_blocked(ip):
-
-        AuthAuditLog.objects.create(
-            username_attempt=username,
-            event_type="ACCOUNT_LOCKED",
-            ip_address=ip,
-            user_agent=user_agent,
-            country=geo["country"],
-            city=geo["city"],
-            success=False
-        )
-
-        return Response(
-            {"error": "IP bloquée"},
-            status=status.HTTP_403_FORBIDDEN
-        )
-
-    # 🔐 Auth
+    # 2. Authentification Django
     user = authenticate(username=username, password=password)
 
     if not user:
-
-        register_failed_attempt(ip)
-
-        AuthAuditLog.objects.create(
-            username_attempt=username,
-            event_type="LOGIN_FAILED",
-            ip_address=ip,
-            user_agent=user_agent,
-            country=geo["country"],
-            city=geo["city"],
-            success=False
-        )
-
-        return Response(
-            {"error": "Identifiants invalides"},
-            status=status.HTTP_401_UNAUTHORIZED
-        )
-
-    # reset attempts
-    reset_attempts(ip)
+        # Log minimaliste en cas d'échec (optionnel)
+        return Response({"error": "Identifiants invalides"}, status=401)
 
     if not user.is_active:
-        return Response(
-            {"error": "Compte désactivé"},
-            status=status.HTTP_403_FORBIDDEN
+        return Response({"error": "Compte désactivé"}, status=403)
+
+    # 3. Génération du Token JWT
+    try:
+        refresh = RefreshToken.for_user(user)
+        
+        # Mise à jour rapide des infos de base
+        user.last_login = now()
+        user.last_login_ip = request.META.get("REMOTE_ADDR", "0.0.0.0")
+        user.save(update_fields=["last_login", "last_login_ip"])
+
+        # 4. Récupération des permissions du rôle
+        permissions = list(
+            RolePermission.objects.filter(role=user.role)
+            .values_list('permission__code', flat=True)
         )
 
-    # 🌍 Login suspect
-    if user.last_login_ip and user.last_login_ip != ip:
+        # 5. Réponse propre pour React
+        return Response({
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+            "user": {
+                "id": str(user.id),
+                "username": user.username,
+                "email": user.email,
+                "role": user.role,
+                "permissions": permissions
+            }
+        }, status=200)
 
-        AuthAuditLog.objects.create(
-            user=user,
-            event_type="SUSPICIOUS_LOGIN",
-            ip_address=ip,
-            user_agent=user_agent,
-            country=geo["country"],
-            city=geo["city"],
-            success=True
-        )
-
-    # 🎫 JWT
-    refresh = RefreshToken.for_user(user)
-
-    user.last_login_ip = ip
-    user.last_login = now()
-    user.save(update_fields=["last_login_ip", "last_login"])
-
-    # log success
-    AuthAuditLog.objects.create(
-        user=user,
-        event_type="LOGIN_SUCCESS",
-        ip_address=ip,
-        user_agent=user_agent,
-        country=geo["country"],
-        city=geo["city"],
-        success=True
-    )
-
-    # permissions
-    permissions = list(
-        RolePermission.objects.filter(role=user.role)
-        .values_list('permission__code', flat=True)
-    )
-
-    return Response({
-        "refresh": str(refresh),
-        "access": str(refresh.access_token),
-        "user": {
-            "id": str(user.id),
-            "username": user.username,
-            "email": user.email,
-            "role": user.role,
-            "permissions": permissions
-        }
-    })
-
-
+    except Exception as e:
+        # Si ça crash ici, c'est un problème de config JWT (ex: clé secrète ou UUID)
+        return Response({"error": f"Erreur serveur : {str(e)}"}, status=500)
 # =========================================================
 # 🔐 VERIFY 2FA
 # (tu peux garder ou supprimer si inutile)
