@@ -9,12 +9,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ========================
 SECRET_KEY = 'django-insecure--1z^_d9g@u%k94o^=p8sm^74hhtw^4vwt*$95)nburhmhuvk+('
 
-DEBUG = False
+# ⚠️ TEMPORAIREMENT TRUE POUR DEBUG
+DEBUG = True
 
 ALLOWED_HOSTS = [
     "167.71.2.177",
     "localhost",
     "127.0.0.1",
+    "*",
 ]
 
 # ========================
@@ -26,12 +28,9 @@ AUTH_USER_MODEL = 'users.User'
 # APPS
 # ========================
 INSTALLED_APPS = [
+
     # ADMIN MODERNE
     'jazzmin',
-
-    # ASGI / WEBSOCKET
-    'daphne',
-    'channels',
 
     # DJANGO
     'django.contrib.admin',
@@ -65,10 +64,15 @@ JAZZMIN_SETTINGS = {
     "site_brand": "Administration",
     "welcome_sign": "Bienvenue dans le système pénitentiaire biométrique",
     "copyright": "Ministère de la Justice RDC",
+
     "search_model": ["users.User"],
 
     "topmenu_links": [
-        {"name": "Accueil", "url": "admin:index", "permissions": ["auth.view_user"]},
+        {
+            "name": "Accueil",
+            "url": "admin:index",
+            "permissions": ["auth.view_user"]
+        },
     ],
 
     "icons": {
@@ -80,9 +84,6 @@ JAZZMIN_SETTINGS = {
 
     "show_sidebar": True,
     "navigation_expanded": True,
-
-    "custom_css": None,
-    "custom_js": None,
 }
 
 # ========================
@@ -94,6 +95,7 @@ CORS_ALLOW_ALL_ORIGINS = True
 # MIDDLEWARE
 # ========================
 MIDDLEWARE = [
+
     'django.middleware.security.SecurityMiddleware',
 
     'corsheaders.middleware.CorsMiddleware',
@@ -102,7 +104,6 @@ MIDDLEWARE = [
 
     'django.middleware.common.CommonMiddleware',
 
-    # Active si nécessaire
     # 'django.middleware.csrf.CsrfViewMiddleware',
 
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -134,6 +135,7 @@ TEMPLATES = [
 
         'OPTIONS': {
             'context_processors': [
+
                 'django.template.context_processors.debug',
 
                 'django.template.context_processors.request',
@@ -154,26 +156,11 @@ WSGI_APPLICATION = 'prison_biometrie.wsgi.application'
 ASGI_APPLICATION = 'prison_biometrie.asgi.application'
 
 # ========================
-# CHANNELS / REDIS
-# ========================
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-
-        "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
-        },
-    },
-}
-
-# ========================
-# CACHE REDIS
+# CACHE LOCAL (PAS REDIS)
 # ========================
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-
-        "LOCATION": "redis://127.0.0.1:6379/1",
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
     }
 }
 
@@ -200,6 +187,7 @@ DATABASES = {
 # REST FRAMEWORK
 # ========================
 REST_FRAMEWORK = {
+
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
@@ -217,6 +205,7 @@ REST_FRAMEWORK = {
 # JWT
 # ========================
 SIMPLE_JWT = {
+
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
 
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
@@ -259,3 +248,24 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # DEFAULT FIELD
 # ========================
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ========================
+# LOGGING DJANGO
+# ========================
+LOGGING = {
+
+    'version': 1,
+
+    'disable_existing_loggers': False,
+
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+
+    'root': {
+        'handlers': ['console'],
+        'level': 'ERROR',
+    },
+}

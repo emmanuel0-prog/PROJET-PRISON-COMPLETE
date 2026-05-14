@@ -101,6 +101,8 @@ def login_view(request):
     user_agent = request.META.get("HTTP_USER_AGENT", "unknown")
 
     # 🔥 SAFE GEO (IMPORTANT - évite 500)
+
+    
     try:
         geo = get_ip_info(ip)
         if not isinstance(geo, dict):
