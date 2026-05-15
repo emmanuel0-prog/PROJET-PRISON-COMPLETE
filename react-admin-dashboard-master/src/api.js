@@ -1,95 +1,123 @@
 import axios from "axios";
 
-// 🔥 URL dynamique (dev / prod)
+// =======================================
+// 🌍 CONFIG API (PRODUCTION + DEV)
+// =======================================
+
+// 🔥 URL DU BACKEND DJANGO
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  "http://167.71.2.177:8000/api/";
+
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/",
+  baseURL: API_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
-// ================================
+// =======================================
 // 🔐 INTERCEPTOR REQUEST
-// ================================
+// =======================================
 api.interceptors.request.use(
-    (config) => {
-        const token = localStorage.getItem("access");
+  (config) => {
+    const token = localStorage.getItem("access");
 
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
-        }
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
 
-        return config;
-    },
-    (error) => Promise.reject(error)
+    return config;
+  },
+  (error) => Promise.reject(error)
 );
 
-// ================================
-// 🔄 REFRESH TOKEN AUTOMATIQUE
-// ================================
+// =======================================
+// 🔄 REFRESH TOKEN AUTO
+// =======================================
 let isRefreshing = false;
 let refreshSubscribers = [];
 
 const subscribeTokenRefresh = (callback) => {
-    refreshSubscribers.push(callback);
+  refreshSubscribers.push(callback);
 };
 
 const onRefreshed = (newToken) => {
-    refreshSubscribers.forEach((callback) => callback(newToken));
-    refreshSubscribers = [];
+  refreshSubscribers.forEach((callback) => callback(newToken));
+  refreshSubscribers = [];
 };
 
-// ================================
-// ⚠️ INTERCEPTOR RESPONSE
-// ================================
+// =======================================
+// ⚠️ RESPONSE INTERCEPTOR
+// =======================================
 api.interceptors.response.use(
-    (response) => response,
-    async (error) => {
-        const originalRequest = error.config;
+  (response) => response,
 
-        // 🔴 Token expiré
-        if (error.response?.status === 401 && !originalRequest._retry) {
-            originalRequest._retry = true;
+  async (error) => {
+    const originalRequest = error.config;
 
-            if (isRefreshing) {
-                return new Promise((resolve) => {
-                    subscribeTokenRefresh((token) => {
-                        originalRequest.headers.Authorization = `Bearer ${token}`;
-                        resolve(api(originalRequest));
-                    });
-                });
-            }
+    // 🔴 TOKEN EXPIRÉ
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry
+    ) {
+      originalRequest._retry = true;
 
-            isRefreshing = true;
+      // 🔄 SI REFRESH DÉJÀ EN COURS
+      if (isRefreshing) {
+        return new Promise((resolve) => {
+          subscribeTokenRefresh((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            resolve(api(originalRequest));
+          });
+        });
+      }
 
-            try {
-                const refresh = localStorage.getItem("refresh");
+      isRefreshing = true;
 
-                const response = await axios.post(
-                    `${import.meta.env.VITE_API_URL}/users/token/refresh/`,
-                    { refresh }
-                );
+      try {
+        const refresh = localStorage.getItem("refresh");
 
-                const newAccess = response.data.access;
+        // 🔥 REFRESH TOKEN
+        const response = await axios.post(
+          `${API_BASE_URL}users/token/refresh/`,
+          {
+            refresh,
+          }
+        );
 
-                localStorage.setItem("access", newAccess);
+        const newAccess = response.data.access;
 
-                api.defaults.headers.Authorization = `Bearer ${newAccess}`;
+        // 💾 SAVE NEW TOKEN
+        localStorage.setItem("access", newAccess);
 
-                onRefreshed(newAccess);
+        // 🔥 UPDATE HEADERS
+        api.defaults.headers.Authorization = `Bearer ${newAccess}`;
 
-                return api(originalRequest);
+        // 🔄 RELANCER LES REQUÊTES
+        onRefreshed(newAccess);
 
-            } catch (err) {
-                // ❌ refresh expiré → logout
-                localStorage.removeItem("access");
-                localStorage.removeItem("refresh");
+        // 🔁 REJOUER REQUÊTE
+        originalRequest.headers.Authorization = `Bearer ${newAccess}`;
 
-                window.location.href = "/login";
-            } finally {
-                isRefreshing = false;
-            }
-        }
+        return api(originalRequest);
 
-        return Promise.reject(error);
+      } catch (err) {
+
+        // ❌ SESSION EXPIRÉE
+        localStorage.removeItem("access");
+        localStorage.removeItem("refresh");
+        localStorage.removeItem("user");
+
+        // 🔥 REDIRECTION LOGIN
+        window.location.href = "http://167.71.2.177:5173/login";
+      } finally {
+        isRefreshing = false;
+      }
     }
+
+    return Promise.reject(error);
+  }
 );
 
 export default api;
