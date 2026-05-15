@@ -4,10 +4,13 @@ import axios from "axios";
 // 🌍 CONFIG API (PRODUCTION + DEV)
 // =======================================
 
-// 🔥 URL DU BACKEND DJANGO
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ||
   "http://167.71.2.177:8000/api/";
+
+// =======================================
+// 🔥 API PRINCIPALE
+// =======================================
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -19,6 +22,7 @@ const api = axios.create({
 // =======================================
 // 🔐 INTERCEPTOR REQUEST
 // =======================================
+
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("access");
@@ -35,6 +39,7 @@ api.interceptors.request.use(
 // =======================================
 // 🔄 REFRESH TOKEN AUTO
 // =======================================
+
 let isRefreshing = false;
 let refreshSubscribers = [];
 
@@ -50,6 +55,7 @@ const onRefreshed = (newToken) => {
 // =======================================
 // ⚠️ RESPONSE INTERCEPTOR
 // =======================================
+
 api.interceptors.response.use(
   (response) => response,
 
@@ -63,7 +69,6 @@ api.interceptors.response.use(
     ) {
       originalRequest._retry = true;
 
-      // 🔄 SI REFRESH DÉJÀ EN COURS
       if (isRefreshing) {
         return new Promise((resolve) => {
           subscribeTokenRefresh((token) => {
@@ -78,39 +83,27 @@ api.interceptors.response.use(
       try {
         const refresh = localStorage.getItem("refresh");
 
-        // 🔥 REFRESH TOKEN
         const response = await axios.post(
           `${API_BASE_URL}users/token/refresh/`,
-          {
-            refresh,
-          }
+          { refresh }
         );
 
         const newAccess = response.data.access;
 
-        // 💾 SAVE NEW TOKEN
         localStorage.setItem("access", newAccess);
 
-        // 🔥 UPDATE HEADERS
         api.defaults.headers.Authorization = `Bearer ${newAccess}`;
 
-        // 🔄 RELANCER LES REQUÊTES
         onRefreshed(newAccess);
-
-        // 🔁 REJOUER REQUÊTE
-        originalRequest.headers.Authorization = `Bearer ${newAccess}`;
 
         return api(originalRequest);
 
       } catch (err) {
 
-        // ❌ SESSION EXPIRÉE
         localStorage.removeItem("access");
         localStorage.removeItem("refresh");
-        localStorage.removeItem("user");
 
-        // 🔥 REDIRECTION LOGIN
-        window.location.href = "http://167.71.2.177:5173/login";
+        window.location.href = "/login";
       } finally {
         isRefreshing = false;
       }

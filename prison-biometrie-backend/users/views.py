@@ -1,5 +1,5 @@
 import logging
-
+import traceback
 from django.contrib.auth import authenticate, get_user_model
 from django.utils.timezone import now
 
@@ -46,9 +46,7 @@ from .security import (
 from .utils import get_ip_info
 
 
-logger = logging.getLogger(__name__)
-
-User = get_user_model()
+logger = loggir = get_user_model()
 logger = logging.getLogger(__name__)
 
 
@@ -93,12 +91,13 @@ logger = logging.getLogger(__name__)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_view(request):
-
+    # 1. Récupération propre des données
     username = (request.data.get("username") or "").strip()
     password = (request.data.get("password") or "").strip()
 
-    ip = request.META.get("REMOTE_ADDR", "0.0.0.0")
-    user_agent = request.META.get("HTTP_USER_AGENT", "unknown")
+    if not username or not password:
+        return Response({"error": "Nom d'utilisateur et mot de passe requis"}, status=400)
+
 
     # 🔥 SAFE GEO (IMPORTANT - évite 500)
     
@@ -130,7 +129,14 @@ def login_view(request):
     # 🔐 Auth
     user = authenticate(username=username, password=password)
 
+
+    # 2. Authentification Django
+    user = authenticate(username=username, password=password)
+
+
     if not user:
+        # Log minimaliste en cas d'échec (optionnel)
+        return Response({"error": "Identifiants invalides"}, status=401)
 
         register_failed_attempt(ip)
 
@@ -161,15 +167,41 @@ def login_view(request):
     # 🌍 Login suspect
     if user.last_login_ip and user.last_login_ip != ip:
 
-        AuthAuditLog.objects.create(
-            user=user,
-            event_type="SUSPICIOUS_LOGIN",
-            ip_address=ip,
-            user_agent=user_agent,
-            country=geo["country"],
-            city=geo["city"],
-            success=True
-        )
+    if not user.is_active:
+        return Response({"error": "Compte désactivé"}, status=403)
+
+    # 3. Génération du Token JWT
+    try:
+        refresh = RefreshToken.for_user(user)
+        
+        # Mise à jour rapide des infos de base
+        user.last_login = now()
+        user.last_login_ip = request.META.get("REMOTE_ADDR", "0.0.0.0")
+        user.save(update_fields=["last_login", "last_login_ip"])
+
+        # 4. Récupération des permissions du rôle
+        # On récupère les permissions, si c'est vide, on renvoie une liste vide au lieu de crash
+        try:
+            permissions = list(
+            RolePermission.objects.filter(role=user.role)
+            .values_list('permission__code', flat=True))
+        except Exception:
+            permissions = []
+
+
+        # 5. Réponse propre pour React
+        return Response({
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+            "user": {
+                "id": str(user.id),
+                "username": user.username,
+                "email": user.email,
+                "role": user.role,
+                "permissions": permissions
+            }
+        }, status=200)
+
 
     # 🎫 JWT
     refresh = RefreshToken.for_user(user)
@@ -249,6 +281,10 @@ def login_map(request):
     )
 
     return Response(list(logs))
+
+    except Exception as e:
+        # Si ça crash ici, c'est un problème de config JWT (ex: clé secrète ou UUID)
+        return Response({"error": f"Erreur serveur : {str(e)}"}, status=500)
 
 # =========================================================
 # 🔐 TEST AUTH
